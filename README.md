@@ -70,89 +70,116 @@
 -------------------------------------------------------------
 #### SQL 코드
 ```sql
--- 상품 테이블
-CREATE TABLE Product (
-    product_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    category VARCHAR(100),
-    price DECIMAL(10,2) NOT NULL,
-    supplier_id INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (supplier_id) REFERENCES Supplier(supplier_id)
-);
+-- 데이터베이스 생성 및 사용
+CREATE DATABASE convenient_store;
+USE convenient_store;
 
 -- 공급업체 테이블
-CREATE TABLE Supplier (
-    supplier_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    contact_name VARCHAR(255),
-    phone VARCHAR(20),
-    address TEXT
+CREATE TABLE supplier (
+    supplier_id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    contact VARCHAR(50) NULL,
+    address VARCHAR(100) NULL,
+    PRIMARY KEY (supplier_id)
 );
 
--- 재고관리 테이블
-CREATE TABLE Inventory (
-    inventory_id INT AUTO_INCREMENT PRIMARY KEY,
-    product_id INT NOT NULL,
-    quantity INT NOT NULL DEFAULT 0,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES Product(product_id)
+-- 매장 테이블
+CREATE TABLE store (
+    store_id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    location VARCHAR(100) NOT NULL,
+    manager_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (store_id)
 );
 
 -- 직원 테이블
-CREATE TABLE Employee (
-    employee_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    position VARCHAR(100),
-    phone VARCHAR(20),
-    hire_date DATE
+CREATE TABLE employee (
+    employee_id INT NOT NULL AUTO_INCREMENT,
+    store_id INT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    role ENUM('Manager', 'Cashier', 'Stocker') NOT NULL,
+    hire_date DATE NOT NULL,
+    phone VARCHAR(15) NULL,
+    PRIMARY KEY (employee_id),
+    FOREIGN KEY (store_id) REFERENCES store(store_id) ON DELETE CASCADE
 );
 
--- 고객 테이블
-CREATE TABLE Customer (
-    customer_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    phone VARCHAR(20),
-    email VARCHAR(255),
-    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- 매장의 관리자 관계 설정 (관리자가 사라지면 NULL)
+ALTER TABLE store 
+ADD CONSTRAINT FK_STORE_MANAGER 
+FOREIGN KEY (manager_id) REFERENCES employee(employee_id) ON DELETE SET NULL;
+
+-- **📌 상품 테이블 (Product) 추가**
+CREATE TABLE product (
+    product_id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    category VARCHAR(50) NOT NULL,
+    price BIGINT NOT NULL CHECK (price >= 0),
+    supplier_id INT NOT NULL,
+    PRIMARY KEY (product_id),
+    FOREIGN KEY (supplier_id) REFERENCES supplier(supplier_id) ON DELETE CASCADE
 );
 
--- 주문 테이블
-CREATE TABLE `Order` (
-    order_id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_id INT,
-    employee_id INT,
+-- 주문 테이블 (매장이 공급업체에 주문하는 내역)
+CREATE TABLE order_table (
+    order_id INT NOT NULL AUTO_INCREMENT,
+    store_id INT NOT NULL,
+    supplier_id INT NOT NULL,
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(10,2) NOT NULL,
-    FOREIGN KEY (customer_id) REFERENCES Customer(customer_id),
-    FOREIGN KEY (employee_id) REFERENCES Employee(employee_id)
+    status ENUM('Pending', 'Shipped', 'Delivered') DEFAULT 'Pending',
+    PRIMARY KEY (order_id),
+    FOREIGN KEY (store_id) REFERENCES store(store_id) ON DELETE CASCADE,
+    FOREIGN KEY (supplier_id) REFERENCES supplier(supplier_id) ON DELETE CASCADE
 );
 
--- 샘플 데이터 삽입
-INSERT INTO Supplier (name, contact_name, phone, address) VALUES
-('ABC 식품', '김철수', '010-1234-5678', '서울시 강남구'),
-('XYZ 유통', '이영희', '010-5678-1234', '부산시 해운대구');
+-- 주문 상세 테이블 (각 주문 내 제품 목록)
+CREATE TABLE order_details (
+    order_detail_id INT NOT NULL AUTO_INCREMENT,
+    order_id INT NOT NULL, 0),
+    product_id INT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity >
+    PRIMARY KEY (order_detail_id),
+    FOREIGN KEY (order_id) REFERENCES order_table(order_id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES product(product_id) ON DELETE CASCADE
+);
 
-INSERT INTO Product (name, category, price, supplier_id) VALUES
-('콜라', '음료', 1500, 1),
-('사이다', '음료', 1400, 1),
-('컵라면', '식품', 1200, 2);
+-- 재고 테이블 (매장의 재고 관리)
+CREATE TABLE stock (
+    stock_id INT NOT NULL AUTO_INCREMENT,
+    store_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity >= 0),
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (stock_id),
+    FOREIGN KEY (store_id) REFERENCES store(store_id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES product(product_id) ON DELETE CASCADE
+);
 
-INSERT INTO Inventory (product_id, quantity) VALUES
-(1, 50),
-(2, 30),
-(3, 100);
+-- 거래(판매) 테이블
+CREATE TABLE transaction (
+    transaction_id INT NOT NULL AUTO_INCREMENT,
+    store_id INT NOT NULL,
+    employee_id INT NULL,
+    transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
+    payment_method ENUM('Cash', 'Card', 'Mobile Payment') NOT NULL,
+    PRIMARY KEY (transaction_id),
+    FOREIGN KEY (store_id) REFERENCES store(store_id) ON DELETE CASCADE,
+    FOREIGN KEY (employee_id) REFERENCES employee(employee_id) ON DELETE SET NULL
+);
 
-INSERT INTO Employee (name, position, phone, hire_date) VALUES
-('박지훈', '매니저', '010-9876-5432', '2023-01-15'),
-('정수빈', '캐셔', '010-6543-2109', '2023-05-20');
+-- 거래 상세 테이블 (각 거래에서 판매된 제품 목록)
+CREATE TABLE transaction_details (
+    transaction_detail_id INT NOT NULL AUTO_INCREMENT,
+    transaction_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    subtotal BIGINT NOT NULL CHECK (subtotal >= 0),
+    PRIMARY KEY (transaction_detail_id),
+    FOREIGN KEY (transaction_id) REFERENCES transaction(transaction_id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES product(product_id) ON DELETE CASCADE
+);
 
-INSERT INTO Customer (name, phone, email) VALUES
-('김민지', '010-1111-2222', 'minji@example.com'),
-('박현우', '010-3333-4444', 'hyunwoo@example.com');
-
-INSERT INTO `Order` (customer_id, employee_id, total_amount) VALUES
-(1, 1, 2900),
-(2, 2, 1400);
 ```
 
