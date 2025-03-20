@@ -115,7 +115,7 @@ CREATE TABLE product (
     product_id INT NOT NULL AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
     category VARCHAR(50) NOT NULL,
-    price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
+    price BIGINT NOT NULL CHECK (price >= 0),
     supplier_id INT NOT NULL,
     PRIMARY KEY (product_id),
     FOREIGN KEY (supplier_id) REFERENCES supplier(supplier_id) ON DELETE CASCADE
@@ -136,9 +136,9 @@ CREATE TABLE order_table (
 -- 주문 상세 테이블 (각 주문 내 제품 목록)
 CREATE TABLE order_details (
     order_detail_id INT NOT NULL AUTO_INCREMENT,
-    order_id INT NOT NULL,
+    order_id INT NOT NULL, 0),
     product_id INT NOT NULL,
-    quantity INT NOT NULL CHECK (quantity > 0),
+    quantity INT NOT NULL CHECK (quantity >
     PRIMARY KEY (order_detail_id),
     FOREIGN KEY (order_id) REFERENCES order_table(order_id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES product(product_id) ON DELETE CASCADE
@@ -162,7 +162,7 @@ CREATE TABLE transaction (
     store_id INT NOT NULL,
     employee_id INT NULL,
     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_amount DECIMAL(10,2) NOT NULL CHECK (total_amount >= 0),
+    total_amount BIGINT NOT NULL CHECK (total_amount >= 0),
     payment_method ENUM('Cash', 'Card', 'Mobile Payment') NOT NULL,
     PRIMARY KEY (transaction_id),
     FOREIGN KEY (store_id) REFERENCES store(store_id) ON DELETE CASCADE,
@@ -175,7 +175,7 @@ CREATE TABLE transaction_details (
     transaction_id INT NOT NULL,
     product_id INT NOT NULL,
     quantity INT NOT NULL CHECK (quantity > 0),
-    subtotal DECIMAL(10,2) NOT NULL CHECK (subtotal >= 0),
+    subtotal BIGINT NOT NULL CHECK (subtotal >= 0),
     PRIMARY KEY (transaction_detail_id),
     FOREIGN KEY (transaction_id) REFERENCES transaction(transaction_id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES product(product_id) ON DELETE CASCADE
