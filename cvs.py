@@ -166,27 +166,59 @@ def get_order_receipt(conn):
     else:
         print("해당 주문의 상세 정보를 찾을 수 없습니다.")
 
-
 # ========================= 2️ 가맹점별 재고 조회 및 업데이트 =========================
 def get_store_inventory(conn):
-    """ 가맹점별 재고 현황 조회 (항상 최신 데이터 반영) """
-    store_id = int(input("재고를 조회할 스토어 ID를 입력하세요 >>> "))
+    """ 가게 이름으로 검색 후 선택하여 해당 가게의 재고 목록 출력 """
 
+    # 가게 이름 검색 (LIKE 검색)
+    store_keyword = input("검색할 가게명을 입력하세요 (예: 'GS' 입력 시 GS25 검색) >>> ").strip()
+
+    query = "SELECT store_id, name FROM store WHERE name LIKE %s"
+    param = (f"%{store_keyword}%",)
+    with conn.cursor() as cursor:
+        cursor.execute(query, param)
+        stores = cursor.fetchall()
+
+    if not stores:
+        print("검색된 가게가 없습니다.")
+        return
+
+    print("\n=== 검색된 가맹점 목록 ===")
+    for store in stores:
+        print(f"ID: {store[0]}, 매장명: {store[1]}")
+
+    store_id = int(input("스토어 ID를 선택하세요 >>> "))
+
+    # 선택한 가게의 재고 목록 출력
     query = """
-        SELECT s.name AS store_name, p.name AS product_name, p.category, st.quantity
-        FROM stock st
-        JOIN store s ON st.store_id = s.store_id
-        JOIN product p ON st.product_id = p.product_id
+        SELECT 
+            p.name AS product_name,
+            p.category,
+            s.quantity,
+            s.last_updated
+        FROM stock s
+        JOIN product p ON s.product_id = p.product_id
         WHERE s.store_id = %s
+        ORDER BY p.name ASC
     """
 
     with conn.cursor() as cursor:
         cursor.execute(query, (store_id,))
-        rows = cursor.fetchall()
+        stocks = cursor.fetchall()
 
-    print("\n=== 가맹점별 재고 현황 ===")
-    for row in rows:
-        print(row)
+    if not stocks:
+        print("해당 가게의 재고가 없습니다.")
+        return
+
+    print("\n=== 현재 재고 현황 ===")
+    print(f"선택한 가게 ID: {store_id}")
+    print("-------------------------------------------------")
+    print("상품명 | 카테고리 | 수량 | 마지막 업데이트")
+    print("-------------------------------------------------")
+    for stock in stocks:
+        print(f"{stock[0]} | {stock[1]} | {stock[2]} | {stock[3]}")
+    print("-------------------------------------------------")
+
 
 def update_stock_on_delivery(conn):
     """ 주문 상태가 Delivered로 변경되면 재고 자동 추가 """
@@ -325,9 +357,6 @@ def process_transaction(conn):
         print(f" 거래 처리 중 오류 발생: {error}")
 
 
-
-from datetime import datetime
-
 def get_transaction_receipt(conn):
     """ 거래 상세 영수증 조회 (가게 검색 → 직원 검색 & 선택 → 직원이 처리한 거래 목록 → 거래 상세 조회) """
 
@@ -455,8 +484,6 @@ def get_transaction_receipt(conn):
         print("-" * 50)  # 가독성을 위한 구분선
     else:
         print("해당 거래의 상세 정보를 찾을 수 없습니다.")
-
-
 
 
 # ========================= 4️⃣ 직원 관리 =========================
