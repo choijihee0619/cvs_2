@@ -503,9 +503,22 @@ def get_top_employees(conn):
         cursor.execute(query)
         rows = cursor.fetchall()
 
-    print("\n=== 이달의 판매왕 ===")
-    for row in rows:
-        print(row)
+    if not rows:
+        print("\n 판매 내역이 없습니다.")
+        return
+
+    print("\n===  이달의 판매왕  ===")
+    print("----------------------------------------------------")
+    print(f"{'순위':<5} {'직원 ID':<10} {'이름':<15} {'총 판매 금액'}")
+    print("----------------------------------------------------")
+    
+    for idx, row in enumerate(rows, start=1):
+        employee_id, name, total_sales = row
+        total_sales_formatted = f"{total_sales:,.0f} 원"  # 천 단위 콤마 추가
+        print(f"{idx:<5} {employee_id:<10} {name:<15} {total_sales_formatted}")
+
+    print("----------------------------------------------------")
+
 
 # ========================= 실행 코드 =========================
 if __name__ == '__main__':
