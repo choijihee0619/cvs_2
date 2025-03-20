@@ -26,7 +26,7 @@ def connect():
         print(error)
         return None
 
-# ========================= 1️⃣ 발주 및 영수증 조회 =========================
+# ========================= 1️ 발주 및 영수증 조회 =========================
 def place_order(conn):
     """ 스토어에서 상품을 발주 (스토어 ID, 상품 ID, 수량 입력) """
     store_id = int(input("스토어 ID 입력 >>> "))
@@ -42,29 +42,132 @@ def place_order(conn):
 
     print("발주가 완료되었습니다!")
 
-def get_order_receipt(conn):
-    """ 주문 상세 영수증 조회 """
-    order_id = int(input("조회할 주문 ID 입력 >>> "))
+from datetime import datetime
 
+def get_order_receipt(conn):
+    """ 주문 상세 영수증 조회 (가게 검색 → 공급업체 검색 & 선택 → 주문 목록 출력 → 상세 조회) """
+
+    #   가게 이름 검색 (LIKE 검색)
+    store_keyword = input("검색할 가게명을 입력하세요 (예: 'GS' 입력 시 GS25 검색) >>> ").strip()
+
+    query = "SELECT store_id, name FROM store WHERE name LIKE %s"
+    param = (f"%{store_keyword}%",)
+    with conn.cursor() as cursor:
+        cursor.execute(query, param)
+        stores = cursor.fetchall()
+
+    if not stores:
+        print("검색된 가게가 없습니다.")
+        return
+
+    print("\n=== 검색된 가맹점 목록 ===")
+    for store in stores:
+        print(f"ID: {store[0]}, 매장명: {store[1]}")
+
+    store_id = int(input("스토어 ID를 선택하세요 >>> "))
+
+    #   공급업체 이름 검색 (LIKE 검색)
+    supplier_keyword = input("검색할 공급업체명을 입력하세요 (예: '농심' 입력 시 농심 검색) >>> ").strip()
+
+    query = "SELECT supplier_id, name FROM supplier WHERE name LIKE %s"
+    param = (f"%{supplier_keyword}%",)
+    with conn.cursor() as cursor:
+        cursor.execute(query, param)
+        suppliers = cursor.fetchall()
+
+    if not suppliers:
+        print(" 검색된 공급업체가 없습니다.")
+        return
+
+    print("\n=== 검색된 공급업체 목록 ===")
+    supplier_dict = {}
+    for idx, supplier in enumerate(suppliers, start=1):
+        print(f"{idx}. ID: {supplier[0]}, 공급업체명: {supplier[1]}")
+        supplier_dict[idx] = supplier[0]  # 공급업체 선택을 위해 딕셔너리 저장
+
+    while True:
+        try:
+            supplier_choice = int(input("선택할 공급업체 번호를 입력하세요 >>> "))
+            if supplier_choice in supplier_dict:
+                supplier_id = supplier_dict[supplier_choice]
+                break
+            else:
+                print(" 잘못된 입력입니다. 다시 선택하세요.")
+        except ValueError:
+            print(" 숫자로 입력하세요.")
+
+    #   선택한 가게 & 공급업체 관련 주문 목록 출력
     query = """
-        SELECT o.order_id, s.name AS store_name, p.name AS product_name, od.quantity, o.status, sup.name AS supplier_name
+        SELECT 
+            o.order_id, 
+            o.order_date, 
+            o.status
+        FROM order_table o
+        WHERE o.store_id = %s AND o.supplier_id = %s
+        ORDER BY o.order_date DESC
+    """
+
+    with conn.cursor() as cursor:
+        cursor.execute(query, (store_id, supplier_id))
+        orders = cursor.fetchall()
+
+    if not orders:
+        print(" 해당 가게가 해당 공급업체에서 발주한 주문이 없습니다.")
+        return
+
+    print("\n=== 주문 목록 ===")
+    order_dict = {}
+    for idx, order in enumerate(orders, start=1):
+        print(f"{idx}. 주문 ID: {order[0]}, 주문일자: {order[1]}, 상태: {order[2]}")
+        order_dict[idx] = order[0]  # 주문 선택을 위해 딕셔너리 저장
+
+    while True:
+        try:
+            order_choice = int(input("상세 조회할 주문 번호를 입력하세요 >>> "))
+            if order_choice in order_dict:
+                order_id = order_dict[order_choice]
+                break
+            else:
+                print(" 잘못된 입력입니다. 다시 선택하세요.")
+        except ValueError:
+            print(" 숫자로 입력하세요.")
+
+    #  선택한 주문 ID에 대한 상세 영수증 출력
+    query = """
+        SELECT 
+            o.order_id,
+            o.order_date, 
+            s.name AS store_name,
+            sp.name AS supplier_name,
+            GROUP_CONCAT(p.name SEPARATOR ', ') AS product_names,  -- 상품명을 한 줄로 출력
+            SUM(od.quantity) AS total_quantity
         FROM order_table o
         JOIN order_details od ON o.order_id = od.order_id
         JOIN product p ON od.product_id = p.product_id
-        JOIN supplier sup ON p.supplier_id = sup.supplier_id
         JOIN store s ON o.store_id = s.store_id
+        JOIN supplier sp ON o.supplier_id = sp.supplier_id
         WHERE o.order_id = %s
+        GROUP BY o.order_id, o.order_date, s.name, sp.name
     """
 
     with conn.cursor() as cursor:
         cursor.execute(query, (order_id,))
-        rows = cursor.fetchall()
+        row = cursor.fetchone()
 
-    print("\n=== 주문 상세 영수증 ===")
-    for row in rows:
-        print(row)
+    if row:
+        print("\n=== 주문 상세 영수증 ===")
+        print(f"주문 ID: {row[0]}")
+        print(f"주문일자: {row[1]}")
+        print(f"가게: {row[2]}")
+        print(f"공급업체: {row[3]}")
+        print(f"상품명: {row[4]}")
+        print(f"총 수량: {row[5]}")
+        print("-" * 50)  # 가독성을 위한 구분선
+    else:
+        print("해당 주문의 상세 정보를 찾을 수 없습니다.")
 
-# ========================= 2️⃣ 가맹점별 재고 조회 및 업데이트 =========================
+
+# ========================= 2️ 가맹점별 재고 조회 및 업데이트 =========================
 def get_store_inventory(conn):
     """ 가맹점별 재고 현황 조회 (항상 최신 데이터 반영) """
     store_id = int(input("재고를 조회할 스토어 ID를 입력하세요 >>> "))
@@ -101,11 +204,11 @@ def update_stock_on_delivery(conn):
     
     print("재고가 업데이트되었습니다!")
 
-# ========================= 3️⃣ 거래 및 영수증 조회 =========================
+# ========================= 3️ 거래 및 영수증 조회 =========================
 def process_transaction(conn):
     """ 고객이 상품을 구매하면 거래(판매) 등록 (스토어, 직원, 상품 LIKE 검색 & 결제 방식 선택 포함) """
     try:
-        # 1️⃣ **스토어 검색 & 선택 (LIKE 검색)**
+        # 1️ **스토어 검색 & 선택 (LIKE 검색)**
         store_keyword = input("검색할 스토어명을 입력하세요 >>> ")
         query = "SELECT store_id, name FROM store WHERE name LIKE %s"
         param = (f"%{store_keyword}%",)
@@ -123,7 +226,7 @@ def process_transaction(conn):
 
         store_id = int(input("스토어 ID를 선택하세요 >>> "))
 
-        # 2️⃣ **직원 검색 & 선택 (LIKE 검색)**
+        # 2️ **직원 검색 & 선택 (LIKE 검색)**
         employee_keyword = input("검색할 직원 이름을 입력하세요 >>> ")
         query = "SELECT employee_id, name FROM employee WHERE store_id = %s AND name LIKE %s"
         param = (store_id, f"%{employee_keyword}%")
@@ -141,7 +244,7 @@ def process_transaction(conn):
 
         employee_id = int(input("직원 ID를 선택하세요 >>> "))
 
-        # 3️⃣ **상품 검색 & 선택 (LIKE 검색)**
+        # 3️ **상품 검색 & 선택 (LIKE 검색)**
         product_keyword = input("검색할 상품명을 입력하세요 >>> ")
         query = "SELECT product_id, name, price FROM product WHERE name LIKE %s"
         param = (f"%{product_keyword}%",)
@@ -176,7 +279,7 @@ def process_transaction(conn):
             print(f" 재고 부족! 현재 재고: {current_stock}개, 요청 수량: {quantity}개")
             return
 
-        # 4️⃣ **결제 방식 선택**
+        # 4️ **결제 방식 선택**
         print('''
 --------------------- 결제 방식 선택 ---------------------
 1. 현금 (Cash)
@@ -196,25 +299,25 @@ def process_transaction(conn):
             print(" 잘못된 입력입니다. 기본값(카드)으로 설정합니다.")
             payment_method = "Card"
 
-        # ✅  거래 추가 (결제 방식 반영)
+        #  거래 추가 (결제 방식 반영)
         with conn.cursor() as cursor:
             query = "INSERT INTO transaction (store_id, employee_id, transaction_date, payment_method) VALUES (%s, %s, NOW(), %s)"
             args = (store_id, employee_id, payment_method)
             cursor.execute(query, args)
             transaction_id = cursor.lastrowid  # 새로 삽입된 거래의 ID 가져오기
 
-            # ✅  거래 상세 추가
+            #  거래 상세 추가
             query = "INSERT INTO transaction_details (transaction_id, product_id, quantity) VALUES (%s, %s, %s)"
             args = (transaction_id, product_id, quantity)
             cursor.execute(query, args)
 
-            # ✅  재고 감소 (판매된 수량만큼 stock 감소)
+            #  재고 감소 (판매된 수량만큼 stock 감소)
             query = "UPDATE stock SET quantity = quantity - %s WHERE store_id = %s AND product_id = %s"
             args = (quantity, store_id, product_id)
             cursor.execute(query, args)
 
         conn.commit()  # 모든 변경사항을 DB에 반영
-        print(f"✅ 거래가 성공적으로 완료되었습니다! (거래 ID: {transaction_id})")
+        print(f" 거래가 성공적으로 완료되었습니다! (거래 ID: {transaction_id})")
         print(f" 재고 감소 완료! {product_keyword} 남은 재고: {current_stock - quantity}개")
 
     except Error as error:
@@ -223,29 +326,108 @@ def process_transaction(conn):
 
 
 
+from datetime import datetime
+
 def get_transaction_receipt(conn):
-    """ 거래 상세 영수증 조회 (연, 월, 일 따로 입력 & 자동 변환) """
+    """ 거래 상세 영수증 조회 (가게 검색 → 직원 검색 & 선택 → 직원이 처리한 거래 목록 → 거래 상세 조회) """
 
-    # ✅  연, 월, 일을 개별적으로 입력받음
-    year = input("조회할 연도를 입력하세요 (예: 2024) >>> ").strip()
-    month = input("조회할 월을 입력하세요 (예: 7) >>> ").strip()
-    day = input("조회할 일을 입력하세요 (예: 3) >>> ").strip()
+    # 5
+    # 가게 이름 검색 (LIKE 검색)
+    store_keyword = input("검색할 가게명을 입력하세요 (예: 'GS' 입력 시 GS25 검색) >>> ").strip()
 
-    # ✅  월/일이 한 자리 숫자인 경우 앞에 '0'을 추가
-    month = month.zfill(2)  # 예: '7' → '07'
-    day = day.zfill(2)      # 예: '3' → '03'
+    query = "SELECT store_id, name FROM store WHERE name LIKE %s"
+    param = (f"%{store_keyword}%",)
+    with conn.cursor() as cursor:
+        cursor.execute(query, param)
+        stores = cursor.fetchall()
 
-    # ✅  YYYY-MM-DD 형식으로 변환
-    transaction_date = f"{year}-{month}-{day}"
-    print(f"\n📅 검색할 거래 날짜: {transaction_date}")
+    if not stores:
+        print("검색된 가게가 없습니다.")
+        return
 
+    print("\n=== 검색된 가맹점 목록 ===")
+    for store in stores:
+        print(f"ID: {store[0]}, 매장명: {store[1]}")
+
+    store_id = int(input("스토어 ID를 선택하세요 >>> "))
+
+    # 직원 이름 검색 (LIKE 검색)
+    employee_keyword = input("검색할 직원 이름을 입력하세요 (예: '철수' 입력 시 김철수 검색) >>> ").strip()
+
+    query = "SELECT employee_id, name FROM employee WHERE store_id = %s AND name LIKE %s"
+    param = (store_id, f"%{employee_keyword}%")
+    with conn.cursor() as cursor:
+        cursor.execute(query, param)
+        employees = cursor.fetchall()
+
+    if not employees:
+        print("해당 매장에서 검색된 직원이 없습니다.")
+        return
+
+    print("\n=== 검색된 직원 목록 ===")
+    employee_dict = {}
+    for idx, emp in enumerate(employees, start=1):
+        print(f"{idx}. ID: {emp[0]}, 이름: {emp[1]}")
+        employee_dict[idx] = emp[0]  # 직원 선택을 위해 딕셔너리 저장
+
+    while True:
+        try:
+            employee_choice = int(input("선택할 직원 번호를 입력하세요 >>> "))
+            if employee_choice in employee_dict:
+                employee_id = employee_dict[employee_choice]
+                break
+            else:
+                print("잘못된 입력입니다. 다시 선택하세요.")
+        except ValueError:
+            print("숫자로 입력하세요.")
+
+    # 해당 직원이 담당한 거래 목록 출력 (거래 ID - 거래일자 - 총 금액)
+    query = """
+        SELECT 
+            t.transaction_id, 
+            t.transaction_date, 
+            SUM(td.quantity * p.price) AS total_price
+        FROM transaction t
+        JOIN transaction_details td ON t.transaction_id = td.transaction_id
+        JOIN product p ON td.product_id = p.product_id
+        WHERE t.employee_id = %s
+        GROUP BY t.transaction_id, t.transaction_date
+        ORDER BY t.transaction_date DESC
+    """
+
+    with conn.cursor() as cursor:
+        cursor.execute(query, (employee_id,))
+        transactions = cursor.fetchall()
+
+    if not transactions:
+        print("해당 직원이 처리한 거래가 없습니다.")
+        return
+
+    print("\n=== 해당 직원이 처리한 거래 목록 ===")
+    transaction_dict = {}
+    for idx, trans in enumerate(transactions, start=1):
+        print(f"{idx}. 거래 ID: {trans[0]}, 거래일자: {trans[1]}, 총 결제 금액: {trans[2]} 원")
+        transaction_dict[idx] = trans[0]  # 거래 선택을 위해 딕셔너리 저장
+
+    while True:
+        try:
+            transaction_choice = int(input("상세 조회할 거래 번호를 입력하세요 >>> "))
+            if transaction_choice in transaction_dict:
+                transaction_id = transaction_dict[transaction_choice]
+                break
+            else:
+                print("잘못된 입력입니다. 다시 선택하세요.")
+        except ValueError:
+            print("숫자로 입력하세요.")
+
+    # 선택한 거래 ID에 대한 상세 영수증 출력
     query = """
         SELECT 
             t.transaction_id,
             t.transaction_date, 
             s.name AS store_name,
             e.name AS employee_name,
-            GROUP_CONCAT(p.name SEPARATOR ', ') AS product_names,  --  상품명을 한 줄로 출력
+            GROUP_CONCAT(p.name SEPARATOR ', ') AS product_names,  -- 상품명을 한 줄로 출력
             SUM(td.quantity) AS total_quantity, 
             SUM(td.quantity * p.price) AS total_price
         FROM transaction t
@@ -253,28 +435,27 @@ def get_transaction_receipt(conn):
         JOIN product p ON td.product_id = p.product_id
         JOIN store s ON t.store_id = s.store_id
         JOIN employee e ON t.employee_id = e.employee_id
-        WHERE DATE(t.transaction_date) = %s
+        WHERE t.transaction_id = %s
         GROUP BY t.transaction_id, t.transaction_date, s.name, e.name
-        ORDER BY t.transaction_date DESC
     """
 
     with conn.cursor() as cursor:
-        cursor.execute(query, (transaction_date,))
-        rows = cursor.fetchall()
+        cursor.execute(query, (transaction_id,))
+        row = cursor.fetchone()
 
-    if rows:
+    if row:
         print("\n=== 거래 상세 영수증 ===")
-        for row in rows:
-            print(f"거래 ID: {row[0]}")
-            print(f"거래일자: {row[1]}")
-            print(f"가게: {row[2]}")
-            print(f"직원: {row[3]}")
-            print(f"상품명: {row[4]}")
-            print(f"총 수량: {row[5]}")
-            print(f"총 결제 금액: {row[6]} 원")
-            print("-" * 50)  # 가독성을 위한 구분선
+        print(f"거래 ID: {row[0]}")
+        print(f"거래일자: {row[1]}")
+        print(f"가게: {row[2]}")
+        print(f"직원: {row[3]}")
+        print(f"상품명: {row[4]}")
+        print(f"총 수량: {row[5]}")
+        print(f"총 결제 금액: {row[6]} 원")
+        print("-" * 50)  # 가독성을 위한 구분선
     else:
-        print("해당 날짜에 거래가 없습니다.")
+        print("해당 거래의 상세 정보를 찾을 수 없습니다.")
+
 
 
 
